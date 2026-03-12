@@ -6,14 +6,19 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use Orchestra\Testbench\TestCase;
-use Sarkhanrasimoghlu\KapitalBank\KapitalBankServiceProvider;
+use Sarkhanrasimoghlu\KapitalBank\Contracts\KapitalBankServiceInterface;
+use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\PaymentStatus;
+use Sarkhanrasimoghlu\KapitalBank\Enums\TransactionStatus;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentFailed;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentSucceeded;
 use Sarkhanrasimoghlu\KapitalBank\Exceptions\CallbackException;
 use Sarkhanrasimoghlu\KapitalBank\Http\Controllers\CallbackController;
+use Sarkhanrasimoghlu\KapitalBank\KapitalBankServiceProvider;
 
 class CallbackControllerTest extends TestCase
 {
+    private KapitalBankServiceInterface $service;
+
     protected function getPackageProviders($app): array
     {
         return [KapitalBankServiceProvider::class];
@@ -39,6 +44,19 @@ class CallbackControllerTest extends TestCase
         parent::setUp();
 
         $this->loadMigrationsFrom(__DIR__ . '/../../database/migrations');
+
+        $this->service = $this->createMock(KapitalBankServiceInterface::class);
+    }
+
+    private function mockServiceForStatus(string $paymentId, TransactionStatus $status): void
+    {
+        $this->service->method('getPaymentStatus')->willReturn(new PaymentStatus(
+            paymentId: $paymentId,
+            status: $status,
+            amount: 100.00,
+            currency: 'AZN',
+            rawResponse: [],
+        ));
     }
 
     public function test_it_handles_successful_payment_callback(): void
@@ -55,6 +73,8 @@ class CallbackControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $this->mockServiceForStatus('pay_001', TransactionStatus::Succeeded);
+
         $controller = new CallbackController();
         $request = Request::create('/kapital-bank/callback', 'POST', [
             'event' => 'payment_succeeded',
@@ -66,7 +86,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $response = $controller->handle($request);
+        $response = $controller->handle($request, $this->service);
 
         $this->assertSame(200, $response->getStatusCode());
         $this->assertSame('{"status":"ok"}', $response->getContent());
@@ -97,6 +117,8 @@ class CallbackControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
+        $this->mockServiceForStatus('pay_002', TransactionStatus::Canceled);
+
         $controller = new CallbackController();
         $request = Request::create('/kapital-bank/callback', 'POST', [
             'event' => 'payment_canceled',
@@ -107,7 +129,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $response = $controller->handle($request);
+        $response = $controller->handle($request, $this->service);
 
         $this->assertSame(200, $response->getStatusCode());
 
@@ -123,6 +145,42 @@ class CallbackControllerTest extends TestCase
         });
     }
 
+    public function test_it_falls_back_to_webhook_payload_when_api_unreachable(): void
+    {
+        Event::fake();
+
+        DB::table('kapital_bank_transactions')->insert([
+            'transaction_id' => 'pay_005',
+            'order_id' => 'ORDER-005',
+            'amount' => 100.00,
+            'currency' => 'AZN',
+            'status' => 'pending',
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+
+        $this->service->method('getPaymentStatus')->willThrowException(new \RuntimeException('API down'));
+
+        $controller = new CallbackController();
+        $request = Request::create('/kapital-bank/callback', 'POST', [
+            'event' => 'payment_succeeded',
+            'payload' => [
+                'id' => 'pay_005',
+                'status' => 'succeeded',
+            ],
+        ]);
+
+        $response = $controller->handle($request, $this->service);
+
+        $this->assertSame(200, $response->getStatusCode());
+
+        $transaction = DB::table('kapital_bank_transactions')
+            ->where('transaction_id', 'pay_005')
+            ->first();
+
+        $this->assertSame('succeeded', $transaction->status);
+    }
+
     public function test_it_throws_exception_for_missing_event(): void
     {
         $this->expectException(CallbackException::class);
@@ -136,7 +194,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_missing_payload_id(): void
@@ -152,7 +210,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_unknown_event(): void
@@ -169,7 +227,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_non_existent_transaction(): void
@@ -186,7 +244,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_duplicate_callback(): void
@@ -213,7 +271,7 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_duplicate_canceled_callback(): void
@@ -240,6 +298,6 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request);
+        $controller->handle($request, $this->service);
     }
 }
