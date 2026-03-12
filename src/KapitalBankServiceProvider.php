@@ -14,6 +14,8 @@ use Sarkhanrasimoghlu\KapitalBank\Contracts\SignatureGeneratorInterface;
 use Sarkhanrasimoghlu\KapitalBank\Contracts\TokenManagerInterface;
 use Sarkhanrasimoghlu\KapitalBank\Http\GuzzleHttpClient;
 use Sarkhanrasimoghlu\KapitalBank\Security\HmacSignatureGenerator;
+use Sarkhanrasimoghlu\KapitalBank\Events\PaymentCreated;
+use Sarkhanrasimoghlu\KapitalBank\Listeners\SaveTransactionListener;
 use Sarkhanrasimoghlu\KapitalBank\Services\KapitalBankService;
 
 class KapitalBankServiceProvider extends ServiceProvider
@@ -75,6 +77,11 @@ class KapitalBankServiceProvider extends ServiceProvider
 
         $this->loadMigrationsFrom(__DIR__ . '/../database/migrations');
         $this->loadRoutesFrom(__DIR__ . '/../routes/kapital-bank.php');
+
+        $this->app->make(Dispatcher::class)->listen(
+            PaymentCreated::class,
+            SaveTransactionListener::class,
+        );
     }
 
     /**

@@ -59,7 +59,16 @@ class KapitalBankService implements KapitalBankServiceInterface
                 'confirmation_type' => $result->confirmationType,
             ]);
 
-            $this->events?->dispatch(new PaymentCreated($result->transactionId, $request->orderId, $request->amount, $response));
+            $this->events?->dispatch(new PaymentCreated(
+                transactionId: $result->transactionId,
+                orderId: $request->orderId,
+                amount: $request->amount,
+                currency: $request->currency->value,
+                status: $result->status->value,
+                paymentUrl: $result->paymentUrl,
+                requestData: $data,
+                paymentData: $response,
+            ));
 
             return $result;
         } catch (KapitalBankException $e) {
