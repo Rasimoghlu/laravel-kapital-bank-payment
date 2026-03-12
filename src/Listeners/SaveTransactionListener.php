@@ -15,6 +15,7 @@ class SaveTransactionListener
             'amount' => $event->amount,
             'currency' => $event->currency,
             'status' => $event->status,
+            'payment_method' => $event->requestData['paymentMethodData']['type'] ?? null,
             'payment_url' => $event->paymentUrl,
             'raw_request' => json_encode($event->requestData),
             'raw_response' => json_encode($event->paymentData),

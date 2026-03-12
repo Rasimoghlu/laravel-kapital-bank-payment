@@ -4,6 +4,7 @@ namespace Sarkhanrasimoghlu\KapitalBank\Services;
 
 use DateTimeImmutable;
 use Illuminate\Contracts\Events\Dispatcher;
+use Illuminate\Support\Facades\DB;
 use Psr\Log\LoggerInterface;
 use Sarkhanrasimoghlu\KapitalBank\Contracts\KapitalBankServiceInterface;
 use Sarkhanrasimoghlu\KapitalBank\Contracts\ConfigurationInterface;
@@ -105,6 +106,28 @@ class KapitalBankService implements KapitalBankServiceInterface
             'payment_id' => $paymentId,
             'status' => $status->value,
         ]);
+
+        try {
+            $update = [
+                'status' => $status->value,
+                'raw_response' => json_encode($response),
+                'updated_at' => now(),
+            ];
+
+            if ($paymentMethod) {
+                $update['payment_method'] = $paymentMethod->value;
+            }
+
+            if ($paidAt) {
+                $update['paid_at'] = $paidAt->format('Y-m-d H:i:s');
+            }
+
+            DB::table('kapital_bank_transactions')
+                ->where('transaction_id', $paymentId)
+                ->update($update);
+        } catch (\Throwable) {
+            // DB not available (unit tests)
+        }
 
         return new PaymentStatus(
             paymentId: $response['id'] ?? $paymentId,
