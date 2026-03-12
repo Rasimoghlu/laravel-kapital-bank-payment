@@ -158,6 +158,17 @@ class KapitalBankService implements KapitalBankServiceInterface
                 'status' => $status->value,
             ]);
 
+            try {
+                DB::table('kapital_bank_transactions')
+                    ->where('transaction_id', $request->paymentId)
+                    ->update([
+                        'status' => $status->value,
+                        'raw_response' => json_encode($response),
+                        'updated_at' => now(),
+                    ]);
+            } catch (\Throwable) {
+            }
+
             return new CancelResponse(
                 paymentId: $response['id'] ?? $request->paymentId,
                 status: $status,
@@ -194,6 +205,17 @@ class KapitalBankService implements KapitalBankServiceInterface
                 'refund_id' => $response['id'] ?? '',
                 'status' => $status->value,
             ]);
+
+            try {
+                DB::table('kapital_bank_transactions')
+                    ->where('transaction_id', $request->paymentId)
+                    ->update([
+                        'status' => 'refunded',
+                        'raw_response' => json_encode($response),
+                        'updated_at' => now(),
+                    ]);
+            } catch (\Throwable) {
+            }
 
             return new RefundResponse(
                 refundId: $response['id'] ?? '',
