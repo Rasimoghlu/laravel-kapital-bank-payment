@@ -33,22 +33,16 @@ KAPITAL_BANK_CLIENT_ID=your-oauth2-client-id
 KAPITAL_BANK_CLIENT_SECRET=your-oauth2-client-secret
 KAPITAL_BANK_SECRET_KEY=your-webhook-secret-key
 KAPITAL_BANK_BASE_URL=https://e-commerce.kapitalbank.az
-KAPITAL_BANK_SUCCESS_URL=https://yourapp.com/payment/success
-KAPITAL_BANK_ERROR_URL=https://yourapp.com/payment/error
-KAPITAL_BANK_CALLBACK_URL=https://yourapp.com/kapital-bank/callback
 ```
 
 | Key | Required | Description |
 |-----|----------|-------------|
-| `MERCHANT_ID` | Yes | Merchant identifier |
-| `TERMINAL_ID` | Yes | Terminal identifier |
+| `MERCHANT_ID` | Yes | posDetail.merchantId |
+| `TERMINAL_ID` | Yes | posDetail.terminalId |
 | `CLIENT_ID` | Yes | OAuth2 client ID |
 | `CLIENT_SECRET` | Yes | OAuth2 client secret |
 | `SECRET_KEY` | No | Webhook HMAC secret (required only if using webhook verification) |
-| `BASE_URL` | Yes | API base URL (must be HTTPS) |
-| `SUCCESS_URL` | No | Redirect URL after successful payment |
-| `ERROR_URL` | No | Redirect URL after failed payment |
-| `CALLBACK_URL` | No | Webhook callback URL |
+| `BASE_URL` | Yes | API base URL (must be HTTPS in production) |
 
 Optional settings:
 
@@ -79,6 +73,7 @@ $request = new PaymentRequest(
     currency: Currency::AZN,
     orderId: 'ORDER-12345',
     description: 'Premium subscription',
+    returnUrl: 'https://yourapp.com/payment/success',
     language: Language::AZ,
 );
 
@@ -87,27 +82,57 @@ $response = $service->createPayment($request);
 // Redirect customer to payment page
 return redirect($response->paymentUrl);
 
-// $response->transactionId  — save this to track the payment
-// $response->status         — TransactionStatus::Pending
-// $response->rawResponse    — full API response
+// $response->transactionId    — save this to track the payment
+// $response->status           — TransactionStatus::Pending
+// $response->confirmationType — "redirect", "qr", "mobile"
+// $response->rawResponse      — full API response
 ```
 
-### Create a Payment with Line Items
+### Payment Method Types
 
 ```php
-use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\OrderItem;
+// Bank card (default)
+$request = new PaymentRequest(
+    amount: 10.00,
+    currency: Currency::AZN,
+    orderId: 'ORDER-001',
+    paymentMethodType: 'BANK_CARD',
+    confirmationType: 'REDIRECT',
+    returnUrl: 'https://yourapp.com/success',
+);
 
+// BirBank QR payment
+$request = new PaymentRequest(
+    amount: 10.00,
+    currency: Currency::AZN,
+    orderId: 'ORDER-002',
+    paymentMethodType: 'BIRBANK',
+    confirmationType: 'QR',
+);
+
+// M10 mobile payment
+$request = new PaymentRequest(
+    amount: 10.00,
+    currency: Currency::AZN,
+    orderId: 'ORDER-003',
+    paymentMethodType: 'M10',
+    confirmationType: 'MOBILE',
+);
+```
+
+### Payment with Metadata
+
+```php
 $request = new PaymentRequest(
     amount: 75.00,
     currency: Currency::AZN,
     orderId: 'ORDER-12346',
     description: 'Online order',
-    items: [
-        new OrderItem(name: 'T-Shirt', price: 25.00, quantity: 2),
-        new OrderItem(name: 'Shipping', price: 5.00, quantity: 1),
+    returnUrl: 'https://yourapp.com/success',
+    metadata: [
+        'orderNo' => '12346',
+        'instalmentTerms' => '3,6,9',
     ],
-    successUrl: 'https://yourapp.com/order/12346/thank-you',
-    errorUrl: 'https://yourapp.com/order/12346/failed',
 );
 
 $response = $service->createPayment($request);
@@ -116,44 +141,33 @@ $response = $service->createPayment($request);
 ### Get Payment Status
 
 ```php
-$status = $service->getPaymentStatus('pay_abc123');
+$status = $service->getPaymentStatus('5b16478f-3d22-46d7-82ed-7182dfd21870');
 
-$status->paymentId;      // "pay_abc123"
+$status->paymentId;      // "5b16478f-3d22-46d7-82ed-7182dfd21870"
 $status->status;          // TransactionStatus::Succeeded
 $status->amount;          // 49.99
-$status->currency;        // "AZN"
-$status->paymentMethod;   // PaymentMethod::Card
+$status->currency;        // "azn"
+$status->paymentMethod;   // PaymentMethod from paymentMethod.type
 $status->paidAt;          // DateTimeImmutable or null
-$status->rawResponse;     // full API response
+$status->rawResponse;     // full API response (includes paid, captured, settled, refunded flags)
 ```
 
 ### Cancel a Payment
 
+Cancel depends on payment status. See the [payment state flow](https://pg.kapitalbank.az/docs) in the official documentation.
+
 ```php
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\CancelRequest;
-use Sarkhanrasimoghlu\KapitalBank\Enums\CancellationReason;
 
 $response = $service->cancelPayment(new CancelRequest(
-    paymentId: 'pay_abc123',
-    reason: CancellationReason::CanceledByMerchant,
+    paymentId: '5b16478f-3d22-46d7-82ed-7182dfd21870',
 ));
 
-$response->paymentId;  // "pay_abc123"
-$response->status;      // TransactionStatus::Canceled
+$response->paymentId;         // "5b16478f-3d22-46d7-82ed-7182dfd21870"
+$response->status;             // TransactionStatus::Canceled
+$response->cancelationReason;  // "canceled_by_merchant"
+$response->cancelationParty;   // "merchant"
 ```
-
-Available cancellation reasons:
-
-| Enum Case | Value |
-|-----------|-------|
-| `CanceledByMerchant` | `canceled_by_merchant` |
-| `CanceledByPaymentNetwork` | `canceled_by_payment_network` |
-| `ExpiredOnConfirmation` | `expired_on_confirmation` |
-| `InsufficientFunds` | `insufficient_funds` |
-| `ThreeDsVerificationFailed` | `three_ds_verification_failed` |
-| `ExpiredOnCapture` | `expired_on_capture` |
-| `IssuerDecline` | `issuer_decline` |
-| `GeneralDecline` | `general_decline` |
 
 ### Full Refund
 
@@ -161,32 +175,37 @@ Available cancellation reasons:
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\RefundRequest;
 
 $response = $service->refund(new RefundRequest(
-    paymentId: 'pay_abc123',
+    paymentId: '5b16478f-3d22-46d7-82ed-7182dfd21870',
 ));
 
-$response->success;    // true
-$response->refundId;   // "ref_xyz789"
-$response->status;     // TransactionStatus::Succeeded
-$response->message;    // "Full refund processed"
+$response->refundId;    // "8ce1a742-428d-4158-93b1-3dfe509f04b5"
+$response->status;       // TransactionStatus::Pending
+$response->originalId;   // "5b16478f-3d22-46d7-82ed-7182dfd21870"
+$response->amount;       // 49.99
+$response->currency;     // "azn"
 ```
 
 ### Partial Refund
 
+Payment can be refunded multiple times if refundable amount is not exceeded.
+
 ```php
 $response = $service->refund(new RefundRequest(
-    paymentId: 'pay_abc123',
+    paymentId: '5b16478f-3d22-46d7-82ed-7182dfd21870',
     amount: 15.00,
+    description: 'partial refund',
 ));
 ```
 
 ### Get Refund Status
 
 ```php
-$response = $service->getRefundStatus('ref_xyz789');
+$response = $service->getRefundStatus('8ce1a742-428d-4158-93b1-3dfe509f04b5');
 
-$response->refundId;   // "ref_xyz789"
-$response->success;    // true
-$response->status;     // TransactionStatus::Succeeded
+$response->refundId;    // "8ce1a742-428d-4158-93b1-3dfe509f04b5"
+$response->status;       // TransactionStatus::Succeeded
+$response->originalId;   // "5b16478f-..."
+$response->amount;       // 15.00
 ```
 
 ## Webhooks
@@ -201,10 +220,10 @@ Kapital Bank sends webhooks in this format:
 {
     "event": "payment_succeeded",
     "payload": {
-        "id": "pay_abc123",
-        "type": "payment",
-        "status": "succeeded",
-        "paymentMethod": "card"
+        "id": "e469456c-0a53-4c31-bb43-d77ab197f94a",
+        "type": "purchase",
+        "paymentMethod": "birbank",
+        "status": "succeeded"
     }
 }
 ```
@@ -226,7 +245,6 @@ Requests without a valid signature are rejected.
 The package dispatches Laravel events that you can listen to:
 
 ```php
-// app/Providers/EventServiceProvider.php
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentCreated;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentSucceeded;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentFailed;
@@ -262,9 +280,9 @@ class HandlePaymentSuccess
 
 ## Authentication
 
-The package uses **OAuth2 client credentials** flow. Tokens are automatically:
+The package uses **OAuth2 client credentials** flow (`POST /api/oauth2/token`). Tokens are automatically:
 
-- Fetched on first API request
+- Fetched on first API request with `grant_type=client_credentials` and `scope=email`
 - Cached in Laravel's cache store (default TTL: 3500 seconds)
 - Refreshed automatically on 401 responses (exactly once per request)
 - Protected against thundering herd with cache locks
@@ -275,7 +293,7 @@ You never need to manage tokens manually.
 
 | Method | Endpoint | Service Method |
 |--------|----------|----------------|
-| `POST` | `/oauth2/token` | Automatic |
+| `POST` | `/api/oauth2/token` | Automatic |
 | `POST` | `/v1/payments` | `createPayment()` |
 | `GET` | `/v1/payments/{id}` | `getPaymentStatus()` |
 | `PUT` | `/v1/payments/{id}/cancel` | `cancelPayment()` |
@@ -310,9 +328,9 @@ try {
 } catch (AuthenticationException $e) {
     // OAuth2 token fetch/refresh failed
 } catch (HttpException $e) {
-    // API connection failed or returned error
+    // API returned error (400, 500, etc.)
     $statusCode = $e->getCode();
-    $context = $e->getContext(); // ['status_code' => 500, 'body' => '...']
+    $context = $e->getContext(); // ['status_code' => 400, 'body' => '{"code":"bad_request",...}']
 } catch (InvalidPaymentException $e) {
     // Validation error (invalid amount, missing order ID, etc.)
 } catch (KapitalBankException $e) {
@@ -328,7 +346,7 @@ try {
 - **Base64 HMAC-SHA256** webhook signature verification on raw body
 - **`hash_equals()`** for timing-safe signature comparison
 - **`X-Idempotency-Key`** UUID on every POST/PUT to prevent double charges
-- **HTTPS enforcement** on all configured URLs
+- **HTTPS enforcement** on all configured URLs (HTTP allowed in local/testing)
 - **`client_secret` never logged** in any context
 
 ## Database
@@ -358,7 +376,7 @@ The package creates a `kapital_bank_transactions` table:
 ./vendor/bin/phpunit
 ```
 
-The package includes 82 tests covering:
+The package includes 81 tests covering:
 - Configuration validation
 - DTO construction and serialization
 - HMAC signature generation and verification (hex + Base64)
@@ -371,7 +389,7 @@ The package includes 82 tests covering:
 
 A ready-to-use Postman collection is included in `postman/`:
 
-- `Kapital_Bank_API_V1.3.postman_collection.json` — all 9 requests with auto-tests
+- `Kapital_Bank_API_V1.3.postman_collection.json` — all endpoints with auto-tests
 - `Kapital_Bank_API_V1.3.postman_environment.json` — environment template
 
 Features:
