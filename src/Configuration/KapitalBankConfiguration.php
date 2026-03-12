@@ -155,8 +155,10 @@ readonly class KapitalBankConfiguration implements ConfigurationInterface
             'callbackUrl' => $this->callbackUrl,
         ];
 
+        $isLocal = in_array(env('APP_ENV'), ['local', 'testing'], true);
+
         foreach ($urlKeys as $key => $url) {
-            if (! empty($url) && ! str_starts_with($url, 'https://')) {
+            if (! empty($url) && ! str_starts_with($url, 'https://') && ! $isLocal) {
                 throw InvalidConfigurationException::invalidUrl($key, $url);
             }
         }

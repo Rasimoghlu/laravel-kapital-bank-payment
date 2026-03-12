@@ -10,7 +10,6 @@ use Sarkhanrasimoghlu\KapitalBank\Contracts\HttpClientInterface;
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\CancelRequest;
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\PaymentRequest;
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\RefundRequest;
-use Sarkhanrasimoghlu\KapitalBank\Enums\CancellationReason;
 use Sarkhanrasimoghlu\KapitalBank\Enums\Currency;
 use Sarkhanrasimoghlu\KapitalBank\Enums\TransactionStatus;
 use Sarkhanrasimoghlu\KapitalBank\Exceptions\HttpException;
@@ -33,8 +32,8 @@ class KapitalBankServiceTest extends TestCase
         $this->logger = $this->createMock(LoggerInterface::class);
 
         $this->configuration->method('getBaseUrl')->willReturn('https://api.kapitalbank.test');
-        $this->configuration->method('getMerchantId')->willReturn('test-merchant');
-        $this->configuration->method('getTerminalId')->willReturn('test-terminal');
+        $this->configuration->method('getMerchantId')->willReturn('E1040009');
+        $this->configuration->method('getTerminalId')->willReturn('E1040009');
         $this->configuration->method('getSuccessUrl')->willReturn('https://example.com/success');
         $this->configuration->method('getErrorUrl')->willReturn('https://example.com/error');
         $this->configuration->method('getCallbackUrl')->willReturn('https://example.com/callback');
@@ -51,7 +50,12 @@ class KapitalBankServiceTest extends TestCase
     {
         $this->httpClient->method('post')->willReturn([
             'id' => 'pay_001',
-            'redirect_url' => 'https://kapitalbank.test/pay/pay_001',
+            'status' => 'pending',
+            'confirmation' => [
+                'type' => 'redirect',
+                'url' => 'https://checkout.kapitalbank.az/pay/pay_001',
+                'returnUrl' => 'https://example.com/success',
+            ],
         ]);
 
         $request = new PaymentRequest(
@@ -64,8 +68,36 @@ class KapitalBankServiceTest extends TestCase
         $response = $this->service->createPayment($request);
 
         $this->assertSame('pay_001', $response->transactionId);
-        $this->assertSame('https://kapitalbank.test/pay/pay_001', $response->paymentUrl);
+        $this->assertSame('https://checkout.kapitalbank.az/pay/pay_001', $response->paymentUrl);
         $this->assertSame(TransactionStatus::Pending, $response->status);
+        $this->assertSame('redirect', $response->confirmationType);
+    }
+
+    #[Test]
+    public function it_creates_payment_with_qr_confirmation(): void
+    {
+        $this->httpClient->method('post')->willReturn([
+            'id' => 'pay_002',
+            'status' => 'pending',
+            'confirmation' => [
+                'type' => 'qr',
+                'confirmData' => 'birbank://v1/payments?paymentId=pay_002',
+            ],
+        ]);
+
+        $request = new PaymentRequest(
+            amount: 10.00,
+            currency: Currency::AZN,
+            orderId: 'ORDER-002',
+            confirmationType: 'QR',
+            paymentMethodType: 'BIRBANK',
+        );
+
+        $response = $this->service->createPayment($request);
+
+        $this->assertSame('pay_002', $response->transactionId);
+        $this->assertSame('birbank://v1/payments?paymentId=pay_002', $response->paymentUrl);
+        $this->assertSame('qr', $response->confirmationType);
     }
 
     #[Test]
@@ -78,7 +110,7 @@ class KapitalBankServiceTest extends TestCase
         $request = new PaymentRequest(
             amount: 100.00,
             currency: Currency::AZN,
-            orderId: 'ORDER-002',
+            orderId: 'ORDER-003',
         );
 
         $response = $this->service->createPayment($request);
@@ -97,7 +129,7 @@ class KapitalBankServiceTest extends TestCase
         $request = new PaymentRequest(
             amount: 100.00,
             currency: Currency::AZN,
-            orderId: 'ORDER-003',
+            orderId: 'ORDER-004',
         );
 
         $this->expectException(HttpException::class);
@@ -109,11 +141,12 @@ class KapitalBankServiceTest extends TestCase
     public function it_gets_payment_status_via_get(): void
     {
         $this->httpClient->method('get')->willReturn([
+            'id' => 'pay_001',
             'status' => 'succeeded',
-            'amount' => 100.00,
-            'currency' => 'AZN',
-            'payment_method' => 'card',
-            'paid_at' => '2024-01-01T12:00:00Z',
+            'amount' => ['value' => 100.00, 'currency' => 'azn'],
+            'paymentMethod' => ['type' => 'birbank'],
+            'paid' => true,
+            'createdAt' => '2024-01-01T12:00:00Z',
         ]);
 
         $status = $this->service->getPaymentStatus('pay_001');
@@ -121,8 +154,7 @@ class KapitalBankServiceTest extends TestCase
         $this->assertSame('pay_001', $status->paymentId);
         $this->assertSame(TransactionStatus::Succeeded, $status->status);
         $this->assertSame(100.00, $status->amount);
-        $this->assertSame('AZN', $status->currency);
-        $this->assertNotNull($status->paymentMethod);
+        $this->assertSame('azn', $status->currency);
         $this->assertNotNull($status->paidAt);
         $this->assertNotEmpty($status->rawResponse);
     }
@@ -131,8 +163,9 @@ class KapitalBankServiceTest extends TestCase
     public function it_handles_unknown_status(): void
     {
         $this->httpClient->method('get')->willReturn([
+            'id' => 'pay_002',
             'status' => 'UNKNOWN_STATUS',
-            'amount' => 50.00,
+            'amount' => ['value' => 50.00, 'currency' => 'azn'],
         ]);
 
         $status = $this->service->getPaymentStatus('pay_002');
@@ -144,18 +177,20 @@ class KapitalBankServiceTest extends TestCase
     public function it_cancels_payment(): void
     {
         $this->httpClient->method('put')->willReturn([
+            'id' => 'pay_001',
             'status' => 'canceled',
+            'cancelationReason' => 'canceled_by_merchant',
+            'cancelationParty' => 'merchant',
         ]);
 
-        $request = new CancelRequest(
-            paymentId: 'pay_001',
-            reason: CancellationReason::CanceledByMerchant,
-        );
+        $request = new CancelRequest(paymentId: 'pay_001');
 
         $response = $this->service->cancelPayment($request);
 
         $this->assertSame('pay_001', $response->paymentId);
         $this->assertSame(TransactionStatus::Canceled, $response->status);
+        $this->assertSame('canceled_by_merchant', $response->cancelationReason);
+        $this->assertSame('merchant', $response->cancelationParty);
     }
 
     #[Test]
@@ -163,17 +198,19 @@ class KapitalBankServiceTest extends TestCase
     {
         $this->httpClient->method('post')->willReturn([
             'id' => 'ref_001',
-            'status' => 'succeeded',
-            'message' => 'Refund processed',
+            'originalId' => 'pay_001',
+            'status' => 'pending',
+            'amount' => ['value' => 100.00, 'currency' => 'azn'],
+            'description' => 'refund',
         ]);
 
         $request = new RefundRequest(paymentId: 'pay_001');
         $response = $this->service->refund($request);
 
-        $this->assertTrue($response->success);
-        $this->assertSame('Refund processed', $response->message);
         $this->assertSame('ref_001', $response->refundId);
-        $this->assertSame(TransactionStatus::Succeeded, $response->status);
+        $this->assertSame(TransactionStatus::Pending, $response->status);
+        $this->assertSame('pay_001', $response->originalId);
+        $this->assertSame(100.00, $response->amount);
     }
 
     #[Test]
@@ -181,45 +218,35 @@ class KapitalBankServiceTest extends TestCase
     {
         $this->httpClient->method('post')->willReturn([
             'id' => 'ref_002',
-            'status' => 'succeeded',
-            'message' => 'Partial refund processed',
+            'originalId' => 'pay_001',
+            'status' => 'pending',
+            'amount' => ['value' => 4.00, 'currency' => 'azn'],
+            'description' => 'partial refund',
         ]);
 
-        $request = new RefundRequest(paymentId: 'pay_001', amount: 25.00);
+        $request = new RefundRequest(paymentId: 'pay_001', amount: 4.00);
         $response = $this->service->refund($request);
 
-        $this->assertTrue($response->success);
         $this->assertSame('ref_002', $response->refundId);
-    }
-
-    #[Test]
-    public function it_handles_failed_refund(): void
-    {
-        $this->httpClient->method('post')->willReturn([
-            'status' => 'canceled',
-            'message' => 'Insufficient balance',
-        ]);
-
-        $request = new RefundRequest(paymentId: 'pay_001');
-        $response = $this->service->refund($request);
-
-        $this->assertFalse($response->success);
-        $this->assertSame('Insufficient balance', $response->message);
+        $this->assertSame(4.00, $response->amount);
     }
 
     #[Test]
     public function it_gets_refund_status(): void
     {
         $this->httpClient->method('get')->willReturn([
+            'id' => 'ref_001',
+            'originalId' => 'pay_001',
             'status' => 'succeeded',
-            'message' => 'Refund completed',
+            'amount' => ['value' => 10.00, 'currency' => 'azn'],
+            'description' => 'refund',
         ]);
 
         $response = $this->service->getRefundStatus('ref_001');
 
-        $this->assertTrue($response->success);
         $this->assertSame('ref_001', $response->refundId);
         $this->assertSame(TransactionStatus::Succeeded, $response->status);
+        $this->assertSame('pay_001', $response->originalId);
     }
 
     #[Test]
@@ -241,7 +268,11 @@ class KapitalBankServiceTest extends TestCase
     {
         $this->httpClient->method('post')->willReturn([
             'id' => 'pay_001',
-            'redirect_url' => 'https://kapitalbank.test/pay/pay_001',
+            'status' => 'pending',
+            'confirmation' => [
+                'type' => 'redirect',
+                'url' => 'https://checkout.kapitalbank.az/pay/pay_001',
+            ],
         ]);
 
         $this->logger->expects($this->atLeast(2))

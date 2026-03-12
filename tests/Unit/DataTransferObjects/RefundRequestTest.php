@@ -32,7 +32,10 @@ class RefundRequestTest extends TestCase
     {
         $request = new RefundRequest(paymentId: 'pay_001');
 
-        $expected = ['payment_id' => 'pay_001'];
+        $expected = [
+            'id' => 'pay_001',
+            'description' => 'refund',
+        ];
 
         $this->assertSame($expected, $request->toArray());
     }
@@ -43,7 +46,8 @@ class RefundRequestTest extends TestCase
         $request = new RefundRequest(paymentId: 'pay_001', amount: 25.00);
 
         $expected = [
-            'payment_id' => 'pay_001',
+            'id' => 'pay_001',
+            'description' => 'refund',
             'amount' => 25.00,
         ];
 

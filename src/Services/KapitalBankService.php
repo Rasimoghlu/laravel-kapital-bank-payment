@@ -44,11 +44,10 @@ class KapitalBankService implements KapitalBankServiceInterface
 
             $response = $this->httpClient->post($url, $data);
 
-            $transactionId = $response['id'] ?? '';
-            $paymentUrl = $response['redirect_url'] ?? '';
+            $result = PaymentResponse::fromApiResponse($response);
 
-            if (empty($transactionId) || empty($paymentUrl)) {
-                $this->logger->error('Payment creation failed: missing id or redirect_url', [
+            if (empty($result->transactionId)) {
+                $this->logger->error('Payment creation failed: missing id', [
                     'response' => $response,
                 ]);
 
@@ -56,13 +55,13 @@ class KapitalBankService implements KapitalBankServiceInterface
             }
 
             $this->logger->info('Payment created successfully', [
-                'payment_id' => $transactionId,
-                'redirect_url' => $paymentUrl,
+                'payment_id' => $result->transactionId,
+                'confirmation_type' => $result->confirmationType,
             ]);
 
-            $this->events?->dispatch(new PaymentCreated($transactionId, $request->orderId, $request->amount, $response));
+            $this->events?->dispatch(new PaymentCreated($result->transactionId, $request->orderId, $request->amount, $response));
 
-            return PaymentResponse::success($transactionId, $paymentUrl, $response);
+            return $result;
         } catch (KapitalBankException $e) {
             $this->logger->error('Payment creation failed', [
                 'error' => $e->getMessage(),
@@ -84,11 +83,13 @@ class KapitalBankService implements KapitalBankServiceInterface
         $response = $this->httpClient->get($url);
 
         $status = TransactionStatus::tryFrom($response['status'] ?? '') ?? TransactionStatus::Pending;
-        $amount = (float) ($response['amount'] ?? 0);
-        $currency = $response['currency'] ?? null;
-        $paymentMethod = PaymentMethod::tryFrom($response['payment_method'] ?? '');
-        $paidAt = isset($response['paid_at'])
-            ? new DateTimeImmutable($response['paid_at'])
+        $amount = (float) ($response['amount']['value'] ?? 0);
+        $currency = $response['amount']['currency'] ?? null;
+        $paymentMethod = PaymentMethod::tryFrom(
+            strtolower($response['paymentMethod']['type'] ?? '')
+        );
+        $paidAt = ($response['paid'] ?? false) && isset($response['createdAt'])
+            ? new DateTimeImmutable($response['createdAt'])
             : null;
 
         $this->logger->info('Payment status retrieved', [
@@ -97,7 +98,7 @@ class KapitalBankService implements KapitalBankServiceInterface
         ]);
 
         return new PaymentStatus(
-            paymentId: $paymentId,
+            paymentId: $response['id'] ?? $paymentId,
             status: $status,
             amount: $amount,
             currency: $currency,
@@ -116,7 +117,7 @@ class KapitalBankService implements KapitalBankServiceInterface
         try {
             $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/payments/' . $request->paymentId . '/cancel';
 
-            $response = $this->httpClient->put($url, $request->toArray());
+            $response = $this->httpClient->put($url, []);
 
             $status = TransactionStatus::tryFrom($response['status'] ?? '') ?? TransactionStatus::Canceled;
 
@@ -126,8 +127,10 @@ class KapitalBankService implements KapitalBankServiceInterface
             ]);
 
             return new CancelResponse(
-                paymentId: $request->paymentId,
+                paymentId: $response['id'] ?? $request->paymentId,
                 status: $status,
+                cancelationReason: $response['cancelationReason'] ?? null,
+                cancelationParty: $response['cancelationParty'] ?? null,
                 rawResponse: $response,
             );
         } catch (KapitalBankException $e) {
@@ -152,22 +155,21 @@ class KapitalBankService implements KapitalBankServiceInterface
 
             $response = $this->httpClient->post($url, $request->toArray());
 
-            $success = in_array($response['status'] ?? '', ['succeeded', 'pending']);
-            $message = $response['message'] ?? '';
-            $refundId = $response['id'] ?? '';
-            $status = TransactionStatus::tryFrom($response['status'] ?? '');
+            $status = TransactionStatus::tryFrom($response['status'] ?? '') ?? TransactionStatus::Pending;
 
             $this->logger->info('Refund processed', [
                 'payment_id' => $request->paymentId,
-                'success' => $success,
-                'refund_id' => $refundId,
+                'refund_id' => $response['id'] ?? '',
+                'status' => $status->value,
             ]);
 
             return new RefundResponse(
-                success: $success,
-                message: $message,
-                refundId: $refundId,
+                refundId: $response['id'] ?? '',
                 status: $status,
+                originalId: $response['originalId'] ?? $request->paymentId,
+                amount: isset($response['amount']['value']) ? (float) $response['amount']['value'] : $request->amount,
+                currency: $response['amount']['currency'] ?? null,
+                description: $response['description'] ?? null,
                 rawResponse: $response,
             );
         } catch (KapitalBankException $e) {
@@ -190,20 +192,20 @@ class KapitalBankService implements KapitalBankServiceInterface
 
         $response = $this->httpClient->get($url);
 
-        $status = TransactionStatus::tryFrom($response['status'] ?? '');
-        $success = in_array($response['status'] ?? '', ['succeeded', 'pending']);
-        $message = $response['message'] ?? '';
+        $status = TransactionStatus::tryFrom($response['status'] ?? '') ?? TransactionStatus::Pending;
 
         $this->logger->info('Refund status retrieved', [
             'refund_id' => $refundId,
-            'status' => $response['status'] ?? 'unknown',
+            'status' => $status->value,
         ]);
 
         return new RefundResponse(
-            success: $success,
-            message: $message,
-            refundId: $refundId,
+            refundId: $response['id'] ?? $refundId,
             status: $status,
+            originalId: $response['originalId'] ?? null,
+            amount: isset($response['amount']['value']) ? (float) $response['amount']['value'] : null,
+            currency: $response['amount']['currency'] ?? null,
+            description: $response['description'] ?? null,
             rawResponse: $response,
         );
     }
@@ -213,20 +215,37 @@ class KapitalBankService implements KapitalBankServiceInterface
      */
     private function buildPaymentData(PaymentRequest $request): array
     {
+        $returnUrl = $request->returnUrl
+            ?: $this->configuration->getSuccessUrl()
+            ?: $this->configuration->getErrorUrl();
+
         $data = [
-            'terminal_id' => $this->configuration->getTerminalId(),
-            'amount' => $request->amount,
-            'currency' => $request->currency->value,
-            'order_id' => $request->orderId,
+            'amount' => [
+                'value' => $request->amount,
+                'currency' => $request->currency->value,
+            ],
+            'capture' => $request->capture,
             'description' => $request->description,
-            'language' => $request->language->value,
-            'success_url' => $request->successUrl ?: $this->configuration->getSuccessUrl(),
-            'error_url' => $request->errorUrl ?: $this->configuration->getErrorUrl(),
-            'callback_url' => $this->configuration->getCallbackUrl(),
+            'paymentMethodData' => [
+                'type' => $request->paymentMethodType,
+            ],
+            'confirmation' => [
+                'type' => $request->confirmationType,
+                'returnUrl' => $returnUrl,
+            ],
+            'posDetail' => [
+                'merchantId' => $this->configuration->getMerchantId(),
+                'terminalId' => $this->configuration->getTerminalId(),
+            ],
         ];
 
-        if (! empty($request->items)) {
-            $data['items'] = array_map(fn ($item) => $item->toArray(), $request->items);
+        $metadata = array_merge(
+            ['orderNo' => $request->orderId],
+            $request->metadata,
+        );
+
+        if (! empty($metadata)) {
+            $data['metadata'] = $metadata;
         }
 
         return $data;

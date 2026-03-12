@@ -12,6 +12,8 @@ final readonly class CancelResponse
     public function __construct(
         public string $paymentId,
         public TransactionStatus $status,
+        public ?string $cancelationReason = null,
+        public ?string $cancelationParty = null,
         public array $rawResponse = [],
     ) {}
 }

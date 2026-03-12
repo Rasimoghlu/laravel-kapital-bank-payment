@@ -77,11 +77,12 @@ class OAuthTokenManager implements TokenManagerInterface
             throw AuthenticationException::missingCredentials();
         }
 
-        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/oauth2/token';
+        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/api/oauth2/token';
 
         try {
             $response = $this->httpClient->postForm($url, [
                 'grant_type' => 'client_credentials',
+                'scope' => 'email',
                 'client_id' => $clientId,
                 'client_secret' => $clientSecret,
             ]);
@@ -89,7 +90,7 @@ class OAuthTokenManager implements TokenManagerInterface
             throw AuthenticationException::tokenFetchFailed($e->getMessage());
         }
 
-        $accessToken = $response['access_token'] ?? '';
+        $accessToken = $response['accessToken'] ?? $response['access_token'] ?? '';
 
         if (empty($accessToken)) {
             throw AuthenticationException::tokenFetchFailed('No access_token in response');

@@ -4,7 +4,6 @@ namespace Sarkhanrasimoghlu\KapitalBank\Tests\Unit\DataTransferObjects;
 
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
-use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\OrderItem;
 use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\PaymentRequest;
 use Sarkhanrasimoghlu\KapitalBank\Enums\Currency;
 use Sarkhanrasimoghlu\KapitalBank\Enums\Language;
@@ -27,50 +26,34 @@ class PaymentRequestTest extends TestCase
         $this->assertSame('ORDER-001', $request->orderId);
         $this->assertSame('Test payment', $request->description);
         $this->assertSame(Language::AZ, $request->language);
-        $this->assertEmpty($request->items);
+        $this->assertTrue($request->capture);
+        $this->assertSame('BANK_CARD', $request->paymentMethodType);
+        $this->assertSame('REDIRECT', $request->confirmationType);
+        $this->assertSame('', $request->returnUrl);
+        $this->assertSame([], $request->metadata);
     }
 
     #[Test]
-    public function it_creates_payment_request_with_items(): void
+    public function it_creates_payment_request_with_custom_properties(): void
     {
-        $items = [
-            new OrderItem(name: 'Product A', price: 50.00, quantity: 1),
-            new OrderItem(name: 'Product B', price: 25.25, quantity: 2),
-        ];
-
         $request = new PaymentRequest(
             amount: 100.50,
             currency: Currency::AZN,
             orderId: 'ORDER-002',
-            items: $items,
-        );
-
-        $this->assertCount(2, $request->items);
-    }
-
-    #[Test]
-    public function it_converts_to_array(): void
-    {
-        $request = new PaymentRequest(
-            amount: 50.00,
-            currency: Currency::USD,
-            orderId: 'ORDER-003',
-            description: 'Test',
-            successUrl: 'https://example.com/success',
-            errorUrl: 'https://example.com/error',
+            capture: false,
+            paymentMethodType: 'BIRBANK',
+            confirmationType: 'QR',
+            returnUrl: 'https://example.com/return',
+            metadata: ['key' => 'value'],
             language: Language::EN,
         );
 
-        $array = $request->toArray();
-
-        $this->assertSame(50.00, $array['amount']);
-        $this->assertSame('USD', $array['currency']);
-        $this->assertSame('ORDER-003', $array['order_id']);
-        $this->assertSame('Test', $array['description']);
-        $this->assertSame('https://example.com/success', $array['success_url']);
-        $this->assertSame('https://example.com/error', $array['error_url']);
-        $this->assertSame('en', $array['language']);
-        $this->assertSame([], $array['items']);
+        $this->assertFalse($request->capture);
+        $this->assertSame('BIRBANK', $request->paymentMethodType);
+        $this->assertSame('QR', $request->confirmationType);
+        $this->assertSame('https://example.com/return', $request->returnUrl);
+        $this->assertSame(['key' => 'value'], $request->metadata);
+        $this->assertSame(Language::EN, $request->language);
     }
 
     #[Test]

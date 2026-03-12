@@ -10,18 +10,24 @@ use Sarkhanrasimoghlu\KapitalBank\Enums\TransactionStatus;
 class PaymentResponseTest extends TestCase
 {
     #[Test]
-    public function it_creates_success_response(): void
+    public function it_creates_response_from_api_response(): void
     {
-        $response = PaymentResponse::success(
-            transactionId: 'pay_001',
-            paymentUrl: 'https://kapitalbank.test/pay/pay_001',
-            rawResponse: ['key' => 'value'],
-        );
+        $apiResponse = [
+            'id' => 'pay_001',
+            'status' => 'pending',
+            'confirmation' => [
+                'type' => 'redirect',
+                'url' => 'https://kapitalbank.test/pay/pay_001',
+            ],
+        ];
+
+        $response = PaymentResponse::fromApiResponse($apiResponse);
 
         $this->assertSame('pay_001', $response->transactionId);
         $this->assertSame('https://kapitalbank.test/pay/pay_001', $response->paymentUrl);
         $this->assertSame(TransactionStatus::Pending, $response->status);
-        $this->assertSame(['key' => 'value'], $response->rawResponse);
+        $this->assertSame('redirect', $response->confirmationType);
+        $this->assertSame($apiResponse, $response->rawResponse);
     }
 
     #[Test]
@@ -42,10 +48,12 @@ class PaymentResponseTest extends TestCase
             transactionId: 'pay_002',
             paymentUrl: 'https://kapitalbank.test/pay/pay_002',
             status: TransactionStatus::Succeeded,
+            confirmationType: 'redirect',
         );
 
         $this->assertSame('pay_002', $response->transactionId);
         $this->assertSame(TransactionStatus::Succeeded, $response->status);
+        $this->assertSame('redirect', $response->confirmationType);
         $this->assertSame([], $response->rawResponse);
     }
 }

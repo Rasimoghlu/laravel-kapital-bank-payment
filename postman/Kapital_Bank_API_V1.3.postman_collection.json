@@ -1,7 +1,7 @@
 {
 	"info": {
 		"name": "Kapital Bank API V1.3",
-		"description": "Kapital Bank Checkout Merchant API V1.3 — Laravel package endpoint-lərinin test collection-u.\n\n## Başlamaq üçün:\n1. Environment-i import edin\n2. `base_url`, `client_id`, `client_secret` dəyərlərini doldurun\n3. İlk öncə **1. Get OAuth2 Token** göndərin — token avtomatik saxlanılacaq\n4. Sonra digər endpoint-ləri test edin",
+		"description": "Kapital Bank Checkout Merchant API V1.3\n\n## Başlamaq üçün:\n1. Environment-i import edin\n2. `base_url`, `client_id`, `client_secret`, `merchant_id`, `terminal_id` dəyərlərini doldurun\n3. İlk öncə **1. Get OAuth2 Token** göndərin — token avtomatik saxlanılacaq\n4. Sonra digər endpoint-ləri test edin",
 		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
 	},
 	"auth": {
@@ -26,7 +26,6 @@
 					"    return;",
 					"}",
 					"",
-					"// Skip auto-refresh for the token endpoint itself",
 					"if (pm.info.requestName === '1. Get OAuth2 Token') {",
 					"    return;",
 					"}",
@@ -41,16 +40,16 @@
 					"}",
 					"",
 					"pm.sendRequest({",
-					"    url: baseUrl + '/oauth2/token',",
+					"    url: baseUrl + '/api/oauth2/token',",
 					"    method: 'POST',",
 					"    header: {",
-					"        'Content-Type': 'application/x-www-form-urlencoded',",
-					"        'Accept': 'application/json'",
+					"        'Content-Type': 'application/x-www-form-urlencoded'",
 					"    },",
 					"    body: {",
 					"        mode: 'urlencoded',",
 					"        urlencoded: [",
 					"            { key: 'grant_type', value: 'client_credentials' },",
+					"            { key: 'scope', value: 'email' },",
 					"            { key: 'client_id', value: clientId },",
 					"            { key: 'client_secret', value: clientSecret }",
 					"        ]",
@@ -61,9 +60,9 @@
 					"        return;",
 					"    }",
 					"    const json = res.json();",
-					"    if (json.access_token) {",
-					"        pm.environment.set('access_token', json.access_token);",
-					"        pm.environment.set('token_expiry', Date.now() + ((json.expires_in || 3500) * 1000));",
+					"    if (json.accessToken) {",
+					"        pm.environment.set('access_token', json.accessToken);",
+					"        pm.environment.set('token_expiry', Date.now() + ((json.accessExpiresIn || 500) * 1000));",
 					"        console.log('Token auto-refreshed');",
 					"    }",
 					"});"
@@ -84,7 +83,6 @@
 	"item": [
 		{
 			"name": "Auth",
-			"description": "OAuth2 authentication",
 			"item": [
 				{
 					"name": "1. Get OAuth2 Token",
@@ -98,17 +96,15 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has access_token', function () {",
+									"pm.test('Response has accessToken', function () {",
 									"    const json = pm.response.json();",
-									"    pm.expect(json).to.have.property('access_token');",
-									"    pm.expect(json.access_token).to.be.a('string').and.not.empty;",
+									"    pm.expect(json).to.have.property('accessToken');",
 									"});",
 									"",
-									"// Save token to environment",
 									"const json = pm.response.json();",
-									"if (json.access_token) {",
-									"    pm.environment.set('access_token', json.access_token);",
-									"    const expiresIn = json.expires_in || 3500;",
+									"if (json.accessToken) {",
+									"    pm.environment.set('access_token', json.accessToken);",
+									"    const expiresIn = json.accessExpiresIn || 500;",
 									"    pm.environment.set('token_expiry', Date.now() + (expiresIn * 1000));",
 									"    console.log('Token saved, expires in ' + expiresIn + 's');",
 									"}"
@@ -125,10 +121,6 @@
 							{
 								"key": "Content-Type",
 								"value": "application/x-www-form-urlencoded"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
 							}
 						],
 						"body": {
@@ -137,6 +129,10 @@
 								{
 									"key": "grant_type",
 									"value": "client_credentials"
+								},
+								{
+									"key": "scope",
+									"value": "email"
 								},
 								{
 									"key": "client_id",
@@ -149,18 +145,16 @@
 							]
 						},
 						"url": {
-							"raw": "{{base_url}}/oauth2/token",
+							"raw": "{{base_url}}/api/oauth2/token",
 							"host": ["{{base_url}}"],
-							"path": ["oauth2", "token"]
-						},
-						"description": "OAuth2 client_credentials grant ilə Bearer token almaq.\n\nToken avtomatik olaraq environment-ə saxlanılır və digər request-lərdə istifadə olunur."
+							"path": ["api", "oauth2", "token"]
+						}
 					}
 				}
 			]
 		},
 		{
 			"name": "Payments",
-			"description": "Payment CRUD əməliyyatları",
 			"item": [
 				{
 					"name": "2. Create Payment",
@@ -170,26 +164,26 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('Status code is 200 or 201', function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has id and redirect_url', function () {",
+									"pm.test('Response has id and confirmation', function () {",
 									"    const json = pm.response.json();",
 									"    pm.expect(json).to.have.property('id');",
-									"    pm.expect(json).to.have.property('redirect_url');",
+									"    pm.expect(json).to.have.property('confirmation');",
 									"});",
 									"",
-									"// Save payment_id for subsequent requests",
 									"const json = pm.response.json();",
 									"if (json.id) {",
 									"    pm.collectionVariables.set('payment_id', json.id);",
 									"    pm.environment.set('payment_id', json.id);",
 									"    console.log('Payment ID saved: ' + json.id);",
 									"}",
-									"if (json.redirect_url) {",
-									"    pm.environment.set('payment_redirect_url', json.redirect_url);",
-									"    console.log('Redirect URL: ' + json.redirect_url);",
+									"if (json.confirmation) {",
+									"    const url = json.confirmation.url || json.confirmation.confirmUrl || json.confirmation.confirmData || '';",
+									"    console.log('Confirmation type: ' + json.confirmation.type);",
+									"    console.log('Confirmation URL: ' + url);",
 									"}"
 								]
 							}
@@ -199,13 +193,9 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"// Generate unique order ID",
 									"const orderId = 'ORDER-' + Date.now();",
 									"pm.variables.set('generated_order_id', orderId);",
-									"",
-									"// Generate idempotency key",
-									"const idempotencyKey = pm.variables.replaceIn('{{$guid}}');",
-									"pm.variables.set('idempotency_key', idempotencyKey);"
+									"pm.variables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
 								]
 							}
 						}
@@ -218,24 +208,19 @@
 								"value": "application/json"
 							},
 							{
-								"key": "Accept",
-								"value": "application/json"
-							},
-							{
 								"key": "X-Idempotency-Key",
 								"value": "{{idempotency_key}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"terminal_id\": \"{{terminal_id}}\",\n    \"amount\": 10.00,\n    \"currency\": \"AZN\",\n    \"order_id\": \"{{generated_order_id}}\",\n    \"description\": \"Test payment from Postman\",\n    \"language\": \"az\",\n    \"success_url\": \"{{success_url}}\",\n    \"error_url\": \"{{error_url}}\",\n    \"callback_url\": \"{{callback_url}}\"\n}"
+							"raw": "{\n    \"amount\": {\n        \"value\": 10.0,\n        \"currency\": \"AZN\"\n    },\n    \"capture\": true,\n    \"description\": \"Test payment from Postman\",\n    \"paymentMethodData\": {\n        \"type\": \"BANK_CARD\"\n    },\n    \"confirmation\": {\n        \"type\": \"REDIRECT\",\n        \"returnUrl\": \"{{return_url}}\"\n    },\n    \"posDetail\": {\n        \"merchantId\": \"{{merchant_id}}\",\n        \"terminalId\": \"{{terminal_id}}\"\n    },\n    \"metadata\": {\n        \"orderNo\": \"{{generated_order_id}}\"\n    }\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/v1/payments",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "payments"]
-						},
-						"description": "Yeni payment yaratmaq.\n\nUğurlu cavabda `id` və `redirect_url` qaytarılır. `redirect_url` müştərini ödəniş səhifəsinə yönləndirir.\n\n`payment_id` avtomatik saxlanılır."
+						}
 					}
 				},
 				{
@@ -250,40 +235,28 @@
 									"    pm.response.to.have.status(200);",
 									"});",
 									"",
-									"pm.test('Response has status field', function () {",
+									"pm.test('Response has id and status', function () {",
 									"    const json = pm.response.json();",
+									"    pm.expect(json).to.have.property('id');",
 									"    pm.expect(json).to.have.property('status');",
 									"});",
 									"",
-									"pm.test('Status is valid enum value', function () {",
-									"    const json = pm.response.json();",
-									"    const validStatuses = ['pending', 'succeeded', 'canceled', 'waiting_for_capture', 'refunded', 'partially_refunded'];",
-									"    pm.expect(validStatuses).to.include(json.status);",
-									"});",
-									"",
 									"const json = pm.response.json();",
-									"console.log('Payment status: ' + json.status);",
-									"if (json.payment_method) {",
-									"    console.log('Payment method: ' + json.payment_method);",
-									"}"
+									"console.log('Status: ' + json.status);",
+									"console.log('Paid: ' + json.paid);",
+									"console.log('Captured: ' + json.captured);"
 								]
 							}
 						}
 					],
 					"request": {
 						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
+						"header": [],
 						"url": {
 							"raw": "{{base_url}}/v1/payments/{{payment_id}}",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "payments", "{{payment_id}}"]
-						},
-						"description": "Payment-in cari statusunu almaq.\n\n**GET** method istifadə olunur (köhnə API-dən fərqli olaraq POST yox).\n\nMümkün status-lar: `pending`, `succeeded`, `canceled`, `waiting_for_capture`"
+						}
 					}
 				},
 				{
@@ -300,69 +273,39 @@
 									"",
 									"pm.test('Payment is canceled', function () {",
 									"    const json = pm.response.json();",
-									"    pm.expect(json).to.have.property('status');",
 									"    pm.expect(json.status).to.equal('canceled');",
 									"});",
 									"",
 									"console.log('Payment canceled successfully');"
 								]
 							}
-						},
-						{
-							"listen": "prerequest",
-							"script": {
-								"type": "text/javascript",
-								"exec": [
-									"const idempotencyKey = pm.variables.replaceIn('{{$guid}}');",
-									"pm.variables.set('idempotency_key', idempotencyKey);"
-								]
-							}
 						}
 					],
 					"request": {
 						"method": "PUT",
-						"header": [
-							{
-								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
-								"value": "application/json"
-							},
-							{
-								"key": "X-Idempotency-Key",
-								"value": "{{idempotency_key}}"
-							}
-						],
-						"body": {
-							"mode": "raw",
-							"raw": "{\n    \"cancellation_reason\": \"canceled_by_merchant\"\n}"
-						},
+						"header": [],
 						"url": {
 							"raw": "{{base_url}}/v1/payments/{{payment_id}}/cancel",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "payments", "{{payment_id}}", "cancel"]
-						},
-						"description": "Payment-i ləğv etmək.\n\n**PUT** method istifadə olunur.\n\nMümkün `cancellation_reason` dəyərləri:\n- `canceled_by_merchant`\n- `canceled_by_payment_network`\n- `expired_on_confirmation`\n- `insufficient_funds`\n- `three_ds_verification_failed`\n- `expired_on_capture`\n- `issuer_decline`\n- `general_decline`"
+						}
 					}
 				}
 			]
 		},
 		{
 			"name": "Refunds",
-			"description": "Refund əməliyyatları",
 			"item": [
 				{
-					"name": "5. Create Refund (Full)",
+					"name": "5a. Create Refund (Full)",
 					"event": [
 						{
 							"listen": "test",
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('Status code is 200 or 201', function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
 									"pm.test('Response has refund id', function () {",
@@ -384,8 +327,7 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"const idempotencyKey = pm.variables.replaceIn('{{$guid}}');",
-									"pm.variables.set('idempotency_key', idempotencyKey);"
+									"pm.variables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
 								]
 							}
 						}
@@ -398,24 +340,19 @@
 								"value": "application/json"
 							},
 							{
-								"key": "Accept",
-								"value": "application/json"
-							},
-							{
 								"key": "X-Idempotency-Key",
 								"value": "{{idempotency_key}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"payment_id\": \"{{payment_id}}\"\n}"
+							"raw": "{\n    \"id\": \"{{payment_id}}\",\n    \"description\": \"refund\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/v1/refunds",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "refunds"]
-						},
-						"description": "Tam refund yaratmaq.\n\n`amount` göndərilmədikdə tam məbləğ geri qaytarılır."
+						}
 					}
 				},
 				{
@@ -426,13 +363,8 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"pm.test('Status code is 200 or 201', function () {",
-									"    pm.expect(pm.response.code).to.be.oneOf([200, 201]);",
-									"});",
-									"",
-									"pm.test('Response has refund id', function () {",
-									"    const json = pm.response.json();",
-									"    pm.expect(json).to.have.property('id');",
+									"pm.test('Status code is 200', function () {",
+									"    pm.response.to.have.status(200);",
 									"});",
 									"",
 									"const json = pm.response.json();",
@@ -449,8 +381,7 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"const idempotencyKey = pm.variables.replaceIn('{{$guid}}');",
-									"pm.variables.set('idempotency_key', idempotencyKey);"
+									"pm.variables.set('idempotency_key', pm.variables.replaceIn('{{$guid}}'));"
 								]
 							}
 						}
@@ -463,24 +394,19 @@
 								"value": "application/json"
 							},
 							{
-								"key": "Accept",
-								"value": "application/json"
-							},
-							{
 								"key": "X-Idempotency-Key",
 								"value": "{{idempotency_key}}"
 							}
 						],
 						"body": {
 							"mode": "raw",
-							"raw": "{\n    \"payment_id\": \"{{payment_id}}\",\n    \"amount\": 5.00\n}"
+							"raw": "{\n    \"id\": \"{{payment_id}}\",\n    \"amount\": 4,\n    \"description\": \"partial refund\"\n}"
 						},
 						"url": {
 							"raw": "{{base_url}}/v1/refunds",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "refunds"]
-						},
-						"description": "Qismən refund yaratmaq.\n\n`amount` sahəsi ilə istənilən məbləği geri qaytarmaq mümkündür."
+						}
 					}
 				},
 				{
@@ -508,25 +434,18 @@
 					],
 					"request": {
 						"method": "GET",
-						"header": [
-							{
-								"key": "Accept",
-								"value": "application/json"
-							}
-						],
+						"header": [],
 						"url": {
 							"raw": "{{base_url}}/v1/refunds/{{refund_id}}",
 							"host": ["{{base_url}}"],
 							"path": ["v1", "refunds", "{{refund_id}}"]
-						},
-						"description": "Refund-un cari statusunu almaq."
+						}
 					}
 				}
 			]
 		},
 		{
 			"name": "Webhook (Test)",
-			"description": "Webhook callback simulyasiyası — Laravel app-in callback endpoint-ini test etmək üçün",
 			"item": [
 				{
 					"name": "7a. Simulate Webhook — payment_succeeded",
@@ -538,11 +457,6 @@
 								"exec": [
 									"pm.test('Status code is 200', function () {",
 									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test('Response is ok', function () {",
-									"    const json = pm.response.json();",
-									"    pm.expect(json.status).to.equal('ok');",
 									"});"
 								]
 							}
@@ -552,17 +466,12 @@
 							"script": {
 								"type": "text/javascript",
 								"exec": [
-									"// Generate HMAC-SHA256 Base64 signature from raw body",
 									"const body = pm.variables.replaceIn(pm.request.body.raw);",
 									"const secretKey = pm.environment.get('secret_key');",
-									"",
 									"if (secretKey) {",
 									"    const signature = CryptoJS.HmacSHA256(body, secretKey);",
-									"    const base64Sig = CryptoJS.enc.Base64.stringify(signature);",
-									"    pm.variables.set('webhook_signature', base64Sig);",
-									"    console.log('Generated X-Signature: ' + base64Sig);",
+									"    pm.variables.set('webhook_signature', CryptoJS.enc.Base64.stringify(signature));",
 									"} else {",
-									"    console.warn('secret_key not set — X-Signature will be empty');",
 									"    pm.variables.set('webhook_signature', '');",
 									"}"
 								]
@@ -577,10 +486,6 @@
 						"header": [
 							{
 								"key": "Content-Type",
-								"value": "application/json"
-							},
-							{
-								"key": "Accept",
 								"value": "application/json"
 							},
 							{
@@ -596,8 +501,7 @@
 							"raw": "{{app_url}}/kapital-bank/callback",
 							"host": ["{{app_url}}"],
 							"path": ["kapital-bank", "callback"]
-						},
-						"description": "Laravel app-ə `payment_succeeded` webhook göndərmək.\n\n**Qeyd:** Bu request Kapital Bank API-nə yox, sizin Laravel app-ə gedir.\n\n`X-Signature` pre-request script-də avtomatik generate olunur (`secret_key` lazımdır)."
+						}
 					}
 				},
 				{
@@ -610,11 +514,6 @@
 								"exec": [
 									"pm.test('Status code is 200', function () {",
 									"    pm.response.to.have.status(200);",
-									"});",
-									"",
-									"pm.test('Response is ok', function () {",
-									"    const json = pm.response.json();",
-									"    pm.expect(json.status).to.equal('ok');",
 									"});"
 								]
 							}
@@ -626,11 +525,9 @@
 								"exec": [
 									"const body = pm.variables.replaceIn(pm.request.body.raw);",
 									"const secretKey = pm.environment.get('secret_key');",
-									"",
 									"if (secretKey) {",
 									"    const signature = CryptoJS.HmacSHA256(body, secretKey);",
-									"    const base64Sig = CryptoJS.enc.Base64.stringify(signature);",
-									"    pm.variables.set('webhook_signature', base64Sig);",
+									"    pm.variables.set('webhook_signature', CryptoJS.enc.Base64.stringify(signature));",
 									"} else {",
 									"    pm.variables.set('webhook_signature', '');",
 									"}"
@@ -649,10 +546,6 @@
 								"value": "application/json"
 							},
 							{
-								"key": "Accept",
-								"value": "application/json"
-							},
-							{
 								"key": "X-Signature",
 								"value": "{{webhook_signature}}"
 							}
@@ -665,8 +558,7 @@
 							"raw": "{{app_url}}/kapital-bank/callback",
 							"host": ["{{app_url}}"],
 							"path": ["kapital-bank", "callback"]
-						},
-						"description": "Laravel app-ə `payment_canceled` webhook göndərmək."
+						}
 					}
 				}
 			]

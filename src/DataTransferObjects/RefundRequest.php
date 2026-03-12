@@ -9,6 +9,7 @@ final readonly class RefundRequest
     public function __construct(
         public string $paymentId,
         public ?float $amount = null,
+        public string $description = 'refund',
     ) {
         if (empty($this->paymentId)) {
             throw InvalidPaymentException::missingPaymentId();
@@ -24,7 +25,10 @@ final readonly class RefundRequest
      */
     public function toArray(): array
     {
-        $data = ['payment_id' => $this->paymentId];
+        $data = [
+            'id' => $this->paymentId,
+            'description' => $this->description,
+        ];
 
         if ($this->amount !== null) {
             $data['amount'] = $this->amount;

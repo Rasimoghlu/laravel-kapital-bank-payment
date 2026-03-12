@@ -13,19 +13,30 @@ final readonly class PaymentResponse
         public string $transactionId,
         public string $paymentUrl,
         public TransactionStatus $status,
+        public ?string $confirmationType = null,
         public array $rawResponse = [],
     ) {}
 
     /**
-     * @param array<string, mixed> $rawResponse
+     * @param array<string, mixed> $response
      */
-    public static function success(string $transactionId, string $paymentUrl, array $rawResponse = []): self
+    public static function fromApiResponse(array $response): self
     {
+        $id = $response['id'] ?? '';
+        $status = TransactionStatus::tryFrom($response['status'] ?? '') ?? TransactionStatus::Pending;
+
+        $confirmationType = $response['confirmation']['type'] ?? null;
+        $paymentUrl = $response['confirmation']['url']
+            ?? $response['confirmation']['confirmUrl']
+            ?? $response['confirmation']['confirmData']
+            ?? '';
+
         return new self(
-            transactionId: $transactionId,
+            transactionId: $id,
             paymentUrl: $paymentUrl,
-            status: TransactionStatus::Pending,
-            rawResponse: $rawResponse,
+            status: $status,
+            confirmationType: $confirmationType,
+            rawResponse: $response,
         );
     }
 
