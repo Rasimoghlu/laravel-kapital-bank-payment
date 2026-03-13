@@ -11,6 +11,9 @@ final readonly class PaymentRequest
     /**
      * @param array<string, string> $metadata
      */
+    private const VALID_PAYMENT_METHODS = ['BANK_CARD', 'BIRBANK', 'M10'];
+    private const VALID_CONFIRMATION_TYPES = ['REDIRECT', 'QR', 'MOBILE'];
+
     public function __construct(
         public float $amount,
         public Currency $currency,
@@ -29,6 +32,14 @@ final readonly class PaymentRequest
 
         if (empty($this->orderId)) {
             throw InvalidPaymentException::missingOrderId();
+        }
+
+        if (!in_array($this->paymentMethodType, self::VALID_PAYMENT_METHODS, true)) {
+            throw InvalidPaymentException::invalidPaymentMethod($this->paymentMethodType);
+        }
+
+        if (!in_array($this->confirmationType, self::VALID_CONFIRMATION_TYPES, true)) {
+            throw InvalidPaymentException::invalidConfirmationType($this->confirmationType);
         }
     }
 }

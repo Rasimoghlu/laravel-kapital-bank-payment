@@ -84,10 +84,7 @@ class GuzzleHttpClient implements HttpClientInterface
                 ], $headers),
             ]);
 
-            /** @var array<string, mixed> $decoded */
-            $decoded = json_decode($response->getBody()->getContents(), true) ?? [];
-
-            return $decoded;
+            return $this->decodeJsonResponse($response->getBody()->getContents());
         } catch (ConnectException $e) {
             throw HttpException::connectionFailed($url, $e);
         } catch (RequestException $e) {
@@ -118,10 +115,7 @@ class GuzzleHttpClient implements HttpClientInterface
                 ], $headers),
             ]);
 
-            /** @var array<string, mixed> $decoded */
-            $decoded = json_decode($response->getBody()->getContents(), true) ?? [];
-
-            return $decoded;
+            return $this->decodeJsonResponse($response->getBody()->getContents());
         } catch (ConnectException $e) {
             throw HttpException::connectionFailed($url, $e);
         } catch (RequestException $e) {
@@ -156,10 +150,7 @@ class GuzzleHttpClient implements HttpClientInterface
                 ], $headers),
             ]);
 
-            /** @var array<string, mixed> $decoded */
-            $decoded = json_decode($response->getBody()->getContents(), true) ?? [];
-
-            return $decoded;
+            return $this->decodeJsonResponse($response->getBody()->getContents());
         } catch (ConnectException $e) {
             throw HttpException::connectionFailed($url, $e);
         } catch (RequestException $e) {
@@ -179,6 +170,24 @@ class GuzzleHttpClient implements HttpClientInterface
 
             throw HttpException::connectionFailed($url, $e);
         }
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function decodeJsonResponse(string $body): array
+    {
+        if ($body === '') {
+            return [];
+        }
+
+        $decoded = json_decode($body, true);
+
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            throw HttpException::serverError(0, 'Invalid JSON response: ' . json_last_error_msg());
+        }
+
+        return $decoded ?? [];
     }
 
     /**

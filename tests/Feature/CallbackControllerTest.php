@@ -240,7 +240,7 @@ class CallbackControllerTest extends TestCase
         $controller->handle($request, $this->service);
     }
 
-    public function test_it_throws_exception_for_duplicate_callback(): void
+    public function test_duplicate_callback_returns_ok(): void
     {
         DB::table('kapital_bank_transactions')->insert([
             'transaction_id' => 'pay_003',
@@ -252,9 +252,6 @@ class CallbackControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->expectException(CallbackException::class);
-        $this->expectExceptionMessage('Duplicate callback received');
-
         $controller = new CallbackController();
         $request = Request::create('/kapital-bank/callback', 'POST', [
             'event' => 'payment_succeeded',
@@ -264,10 +261,13 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request, $this->service);
+        $response = $controller->handle($request, $this->service);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('{"status":"ok"}', $response->getContent());
     }
 
-    public function test_it_throws_exception_for_duplicate_canceled_callback(): void
+    public function test_duplicate_canceled_callback_returns_ok(): void
     {
         DB::table('kapital_bank_transactions')->insert([
             'transaction_id' => 'pay_004',
@@ -279,9 +279,6 @@ class CallbackControllerTest extends TestCase
             'updated_at' => now(),
         ]);
 
-        $this->expectException(CallbackException::class);
-        $this->expectExceptionMessage('Duplicate callback received');
-
         $controller = new CallbackController();
         $request = Request::create('/kapital-bank/callback', 'POST', [
             'event' => 'payment_canceled',
@@ -291,6 +288,9 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $controller->handle($request, $this->service);
+        $response = $controller->handle($request, $this->service);
+
+        $this->assertSame(200, $response->getStatusCode());
+        $this->assertSame('{"status":"ok"}', $response->getContent());
     }
 }

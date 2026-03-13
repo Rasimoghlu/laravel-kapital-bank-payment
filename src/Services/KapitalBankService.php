@@ -19,6 +19,7 @@ use Sarkhanrasimoghlu\KapitalBank\DataTransferObjects\RefundResponse;
 use Sarkhanrasimoghlu\KapitalBank\Enums\PaymentMethod;
 use Sarkhanrasimoghlu\KapitalBank\Enums\TransactionStatus;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentCreated;
+use Sarkhanrasimoghlu\KapitalBank\Events\PaymentRefunded;
 use Sarkhanrasimoghlu\KapitalBank\Exceptions\KapitalBankException;
 
 class KapitalBankService implements KapitalBankServiceInterface
@@ -88,7 +89,7 @@ class KapitalBankService implements KapitalBankServiceInterface
             'payment_id' => $paymentId,
         ]);
 
-        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/payments/' . $paymentId;
+        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/payments/' . urlencode($paymentId);
 
         $response = $this->httpClient->get($url);
 
@@ -161,7 +162,7 @@ class KapitalBankService implements KapitalBankServiceInterface
         ]);
 
         try {
-            $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/payments/' . $request->paymentId . '/cancel';
+            $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/payments/' . urlencode($request->paymentId) . '/cancel';
 
             $response = $this->httpClient->put($url, []);
 
@@ -239,7 +240,7 @@ class KapitalBankService implements KapitalBankServiceInterface
                 ]);
             }
 
-            return new RefundResponse(
+            $refundResponse = new RefundResponse(
                 refundId: $response['id'] ?? '',
                 status: $status,
                 originalId: $response['originalId'] ?? $request->paymentId,
@@ -248,6 +249,15 @@ class KapitalBankService implements KapitalBankServiceInterface
                 description: $response['description'] ?? null,
                 rawResponse: $response,
             );
+
+            $this->events?->dispatch(new PaymentRefunded(
+                transactionId: $request->paymentId,
+                amount: $refundResponse->amount ?? $request->amount ?? 0,
+                refundId: $refundResponse->refundId,
+                refundData: $response,
+            ));
+
+            return $refundResponse;
         } catch (KapitalBankException $e) {
             $this->logger->error('Refund failed', [
                 'error' => $e->getMessage(),
@@ -264,7 +274,7 @@ class KapitalBankService implements KapitalBankServiceInterface
             'refund_id' => $refundId,
         ]);
 
-        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/refunds/' . $refundId;
+        $url = rtrim($this->configuration->getBaseUrl(), '/') . '/v1/refunds/' . urlencode($refundId);
 
         $response = $this->httpClient->get($url);
 

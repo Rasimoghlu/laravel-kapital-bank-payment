@@ -45,12 +45,30 @@ class CallbackController extends Controller
                 TransactionStatus::Succeeded->value,
                 TransactionStatus::Canceled->value,
             ])) {
-                throw CallbackException::duplicateCallback($paymentId);
+                Log::info('Webhook duplicate callback ignored', [
+                    'payment_id' => $paymentId,
+                    'status' => $transaction->status,
+                ]);
+
+                return response()->json(['status' => 'ok']);
             }
 
             // Server-side verification: always verify via API, never trust webhook payload
             $apiStatus = $service->getPaymentStatus($paymentId);
             $transactionStatus = $apiStatus->status;
+
+            $expectedStatus = $webhookEvent === WebhookEvent::PaymentSucceeded
+                ? TransactionStatus::Succeeded
+                : TransactionStatus::Canceled;
+
+            if ($transactionStatus !== $expectedStatus) {
+                Log::warning('Webhook event/status mismatch', [
+                    'payment_id' => $paymentId,
+                    'webhook_event' => $webhookEvent->value,
+                    'expected_status' => $expectedStatus->value,
+                    'actual_status' => $transactionStatus->value,
+                ]);
+            }
 
             Log::info('Webhook server-side verification', [
                 'payment_id' => $paymentId,

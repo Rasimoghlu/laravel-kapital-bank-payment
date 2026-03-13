@@ -94,4 +94,46 @@ class PaymentRequestTest extends TestCase
             orderId: '',
         );
     }
+
+    #[Test]
+    public function it_throws_exception_for_invalid_payment_method(): void
+    {
+        $this->expectException(InvalidPaymentException::class);
+        $this->expectExceptionMessage('Invalid payment method type');
+
+        new PaymentRequest(
+            amount: 100.00,
+            currency: Currency::AZN,
+            orderId: 'ORDER-001',
+            paymentMethodType: 'INVALID',
+        );
+    }
+
+    #[Test]
+    public function it_throws_exception_for_invalid_confirmation_type(): void
+    {
+        $this->expectException(InvalidPaymentException::class);
+        $this->expectExceptionMessage('Invalid confirmation type');
+
+        new PaymentRequest(
+            amount: 100.00,
+            currency: Currency::AZN,
+            orderId: 'ORDER-001',
+            confirmationType: 'INVALID',
+        );
+    }
+
+    #[Test]
+    public function it_accepts_valid_payment_methods(): void
+    {
+        foreach (['BANK_CARD', 'BIRBANK', 'M10'] as $method) {
+            $request = new PaymentRequest(
+                amount: 10.00,
+                currency: Currency::AZN,
+                orderId: 'ORDER-001',
+                paymentMethodType: $method,
+            );
+            $this->assertSame($method, $request->paymentMethodType);
+        }
+    }
 }

@@ -5,6 +5,7 @@ namespace Sarkhanrasimoghlu\KapitalBank\Tests\Feature;
 use Illuminate\Http\Request;
 use PHPUnit\Framework\Attributes\Test;
 use PHPUnit\Framework\TestCase;
+use Sarkhanrasimoghlu\KapitalBank\Contracts\ConfigurationInterface;
 use Sarkhanrasimoghlu\KapitalBank\Contracts\SignatureGeneratorInterface;
 use Sarkhanrasimoghlu\KapitalBank\Exceptions\SignatureException;
 use Sarkhanrasimoghlu\KapitalBank\Http\Middleware\VerifyCallbackSignature;
@@ -14,12 +15,16 @@ class VerifyCallbackSignatureTest extends TestCase
 {
     private SignatureGeneratorInterface $signatureGenerator;
 
+    private ConfigurationInterface $configuration;
+
     private VerifyCallbackSignature $middleware;
 
     protected function setUp(): void
     {
         $this->signatureGenerator = $this->createMock(SignatureGeneratorInterface::class);
-        $this->middleware = new VerifyCallbackSignature($this->signatureGenerator);
+        $this->configuration = $this->createMock(ConfigurationInterface::class);
+        $this->configuration->method('getSecretKey')->willReturn('test-secret-key');
+        $this->middleware = new VerifyCallbackSignature($this->signatureGenerator, $this->configuration);
     }
 
     #[Test]
@@ -116,5 +121,32 @@ class VerifyCallbackSignatureTest extends TestCase
         });
 
         $this->assertSame('OK', $response->getContent());
+    }
+
+    #[Test]
+    public function it_throws_exception_when_secret_key_is_not_configured(): void
+    {
+        $config = $this->createMock(ConfigurationInterface::class);
+        $config->method('getSecretKey')->willReturn('');
+
+        $middleware = new VerifyCallbackSignature($this->signatureGenerator, $config);
+
+        $request = Request::create(
+            '/kapital-bank/callback',
+            'POST',
+            [],
+            [],
+            [],
+            ['CONTENT_TYPE' => 'application/json'],
+            '{"event":"payment_succeeded"}',
+        );
+        $request->headers->set('X-Signature', 'some-signature');
+
+        $this->expectException(SignatureException::class);
+        $this->expectExceptionMessage('secret_key is not configured');
+
+        $middleware->handle($request, function () {
+            return new Response('OK');
+        });
     }
 }

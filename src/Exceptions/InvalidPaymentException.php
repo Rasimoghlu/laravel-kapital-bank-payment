@@ -37,4 +37,20 @@ class InvalidPaymentException extends KapitalBankException
             context: ['reason' => $reason],
         );
     }
+
+    public static function invalidPaymentMethod(string $method): self
+    {
+        return new self(
+            message: "Invalid payment method type: {$method}. Allowed: BANK_CARD, BIRBANK, M10",
+            context: ['payment_method' => $method],
+        );
+    }
+
+    public static function invalidConfirmationType(string $type): self
+    {
+        return new self(
+            message: "Invalid confirmation type: {$type}. Allowed: REDIRECT, QR, MOBILE",
+            context: ['confirmation_type' => $type],
+        );
+    }
 }

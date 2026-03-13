@@ -25,7 +25,7 @@ final readonly class OrderItem
             throw InvalidPaymentException::invalidOrderItem("Item quantity must be greater than zero, got: {$this->quantity}");
         }
 
-        $this->amount = round($this->price * $this->quantity, 2);
+        $this->amount = (float) bcmul((string) $this->price, (string) $this->quantity, 2);
     }
 
     /**
