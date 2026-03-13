@@ -145,10 +145,8 @@ class CallbackControllerTest extends TestCase
         });
     }
 
-    public function test_it_falls_back_to_webhook_payload_when_api_unreachable(): void
+    public function test_it_throws_when_api_verification_fails(): void
     {
-        Event::fake();
-
         DB::table('kapital_bank_transactions')->insert([
             'transaction_id' => 'pay_005',
             'order_id' => 'ORDER-005',
@@ -170,15 +168,10 @@ class CallbackControllerTest extends TestCase
             ],
         ]);
 
-        $response = $controller->handle($request, $this->service);
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('API down');
 
-        $this->assertSame(200, $response->getStatusCode());
-
-        $transaction = DB::table('kapital_bank_transactions')
-            ->where('transaction_id', 'pay_005')
-            ->first();
-
-        $this->assertSame('succeeded', $transaction->status);
+        $controller->handle($request, $this->service);
     }
 
     public function test_it_throws_exception_for_missing_event(): void

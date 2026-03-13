@@ -9,7 +9,7 @@ class SaveTransactionListener
 {
     public function handle(PaymentCreated $event): void
     {
-        DB::table('kapital_bank_transactions')->insert([
+        DB::table('kapital_bank_transactions')->insertOrIgnore([
             'transaction_id' => $event->transactionId,
             'order_id' => $event->orderId,
             'amount' => $event->amount,

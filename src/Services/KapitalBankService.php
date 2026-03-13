@@ -108,25 +108,39 @@ class KapitalBankService implements KapitalBankServiceInterface
         ]);
 
         try {
-            $update = [
-                'status' => $status->value,
-                'raw_response' => json_encode($response),
-                'updated_at' => now(),
-            ];
+            DB::transaction(function () use ($paymentId, $status, $response, $paymentMethod, $paidAt) {
+                $transaction = DB::table('kapital_bank_transactions')
+                    ->where('transaction_id', $paymentId)
+                    ->lockForUpdate()
+                    ->first();
 
-            if ($paymentMethod) {
-                $update['payment_method'] = $paymentMethod->value;
-            }
+                if (!$transaction) {
+                    return;
+                }
 
-            if ($paidAt) {
-                $update['paid_at'] = $paidAt->format('Y-m-d H:i:s');
-            }
+                $update = [
+                    'status' => $status->value,
+                    'raw_response' => json_encode($response),
+                    'updated_at' => now(),
+                ];
 
-            DB::table('kapital_bank_transactions')
-                ->where('transaction_id', $paymentId)
-                ->update($update);
-        } catch (\Throwable) {
-            // DB not available (unit tests)
+                if ($paymentMethod) {
+                    $update['payment_method'] = $paymentMethod->value;
+                }
+
+                if ($paidAt) {
+                    $update['paid_at'] = $paidAt->format('Y-m-d H:i:s');
+                }
+
+                DB::table('kapital_bank_transactions')
+                    ->where('transaction_id', $paymentId)
+                    ->update($update);
+            });
+        } catch (\Throwable $e) {
+            $this->logger->error('Kapital Bank: Failed to sync payment status', [
+                'payment_id' => $paymentId,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         return new PaymentStatus(
@@ -166,7 +180,11 @@ class KapitalBankService implements KapitalBankServiceInterface
                         'raw_response' => json_encode($response),
                         'updated_at' => now(),
                     ]);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                $this->logger->error('Kapital Bank: Failed to sync cancel status', [
+                    'payment_id' => $request->paymentId,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             return new CancelResponse(
@@ -214,7 +232,11 @@ class KapitalBankService implements KapitalBankServiceInterface
                         'raw_response' => json_encode($response),
                         'updated_at' => now(),
                     ]);
-            } catch (\Throwable) {
+            } catch (\Throwable $e) {
+                $this->logger->error('Kapital Bank: Failed to sync refund status', [
+                    'payment_id' => $request->paymentId,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             return new RefundResponse(
