@@ -248,6 +248,7 @@ The package dispatches Laravel events that you can listen to:
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentCreated;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentSucceeded;
 use Sarkhanrasimoghlu\KapitalBank\Events\PaymentFailed;
+use Sarkhanrasimoghlu\KapitalBank\Events\PaymentRefunded;
 
 protected $listen = [
     PaymentCreated::class => [
@@ -261,6 +262,10 @@ protected $listen = [
     PaymentFailed::class => [
         // Fired on payment_canceled webhook
         // $event->transactionId, $event->transaction, $event->callbackData
+    ],
+    PaymentRefunded::class => [
+        // Fired when refund() succeeds
+        // $event->transactionId, $event->amount, $event->refundId, $event->refundData
     ],
 ];
 ```
@@ -376,7 +381,7 @@ The package creates a `kapital_bank_transactions` table:
 ./vendor/bin/phpunit
 ```
 
-The package includes 81 tests covering:
+The package includes 86 tests covering:
 - Configuration validation
 - DTO construction and serialization
 - HMAC signature generation and verification (hex + Base64)
