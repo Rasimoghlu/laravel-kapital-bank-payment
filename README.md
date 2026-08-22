@@ -5,8 +5,8 @@ A Laravel package for integrating with the **Kapital Bank Checkout Merchant API 
 ## Requirements
 
 - PHP 8.3+
-- Laravel 12.0+
-- Guzzle 7.8+
+- Laravel 12.0+ or 13.0+
+- Guzzle 7.8+ or 8.0+
 
 ## Installation
 
